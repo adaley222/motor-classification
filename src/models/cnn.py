@@ -9,6 +9,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MotorImageryCNN(nn.Module):
+    """
+    Convolutional Neural Network for EEG motor imagery classification.
+
+    Args:
+        input_shape (tuple): Shape of the input tensor (channels, height, width).
+        n_classes (int): Number of output classes.
+    """
     def __init__(self, input_shape, n_classes):
         super(MotorImageryCNN, self).__init__()
         # input_shape: (channels, height, width) = (1, sample_size, 64)
@@ -31,6 +38,14 @@ class MotorImageryCNN(nn.Module):
         self.fc = nn.Linear(self._to_linear, n_classes)
 
     def _get_conv_output(self, shape):
+        """
+        Compute the flattened output size after all convolution and pooling layers.
+
+        Args:
+            shape (tuple): Input shape (channels, height, width).
+        Returns:
+            int: Flattened feature size for the fully connected layer.
+        """
         # shape: (channels, height, width)
         x = torch.zeros(1, *shape)
         x = self.conv1(x)
@@ -55,6 +70,14 @@ class MotorImageryCNN(nn.Module):
         return x.numel()
 
     def forward(self, x):
+        """
+        Forward pass of the network.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch, channels, height, width).
+        Returns:
+            torch.Tensor: Output logits for each class.
+        """
         x = self.conv1(x)
         x = F.relu(x)
         x = self.dropout1(x)

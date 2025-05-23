@@ -12,8 +12,15 @@ from urllib.error import HTTPError
 
 def download_physionet(subjects, runs, out_dir):
     """
-    Downloads EEG motor imagery data for given subjects and runs using MNE's eegbci API.
-    Saves EDF files to out_dir.
+    Download EEG motor imagery data for given subjects and runs using MNE's eegbci API.
+
+    Args:
+        subjects (list of int): List of subject numbers to download.
+        runs (list of int): List of run numbers to download for each subject.
+        out_dir (str): Directory to save downloaded EDF files.
+
+    Returns:
+        list: List of file paths to downloaded EDF files.
     """
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)

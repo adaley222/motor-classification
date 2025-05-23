@@ -12,6 +12,24 @@ from src.models.cnn import MotorImageryCNN
 import numpy as np
 
 def train_model(X_train, y_train, X_val, y_val, input_shape, n_classes, batch_size=32, epochs=30, lr=1e-5, device=None):
+    """
+    Train the MotorImageryCNN model on EEG data.
+
+    Args:
+        X_train (np.ndarray): Training features.
+        y_train (np.ndarray): Training labels.
+        X_val (np.ndarray): Validation features.
+        y_val (np.ndarray): Validation labels.
+        input_shape (tuple): Shape of the input tensor (channels, height, width).
+        n_classes (int): Number of output classes.
+        batch_size (int, optional): Batch size. Defaults to 32.
+        epochs (int, optional): Number of training epochs. Defaults to 30.
+        lr (float, optional): Learning rate. Defaults to 1e-5.
+        device (torch.device, optional): Device to use ('cuda' or 'cpu'). Defaults to auto-detect.
+
+    Returns:
+        MotorImageryCNN: Trained model.
+    """
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Convert numpy arrays to torch tensors
@@ -60,3 +78,28 @@ def train_model(X_train, y_train, X_val, y_val, input_shape, n_classes, batch_si
             torch.save(model.state_dict(), 'best_model.pt')
     print(f"Best validation accuracy: {best_val_acc:.4f}")
     return model
+
+def export_to_onnx(model, input_shape, export_path="model.onnx"):
+    """
+    Export a trained PyTorch model to ONNX format.
+
+    Args:
+        model (torch.nn.Module): Trained PyTorch model.
+        input_shape (tuple): Shape of the input tensor (batch, channels, height, width).
+        export_path (str, optional): Path to save the ONNX file. Defaults to "model.onnx".
+    """
+    import torch
+    model.eval()
+    dummy_input = torch.randn(*input_shape)
+    torch.onnx.export(
+        model,
+        dummy_input,
+        export_path,
+        export_params=True,
+        opset_version=12,
+        do_constant_folding=True,
+        input_names=["input"],
+        output_names=["output"],
+        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}}
+    )
+    print(f"Model exported to {export_path}")
