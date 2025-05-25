@@ -1,0 +1,9 @@
+# Requirements for EEG Motor Imagery Pipeline
+mne
+numpy
+scikit-learn
+torch
+onnx
+onnxruntime
+pyyaml
+pytest

@@ -1,0 +1,38 @@
+# config.yaml
+# Configuration for EEG Motor Imagery Pipeline
+
+# Data parameters
+data_dir: "./data"
+montage: "standard_1005"
+l_freq: 1.0
+h_freq: 40.0
+tmin: 0
+tmax: 4
+event_id:
+  T1: 2
+  T2: 3
+
+# Model parameters
+input_shape: [1, 160, 64]
+n_classes: 3
+dropout_rate: 0.5
+learning_rate: 0.00001
+batch_size: 32
+epochs: 30
+
+# Paths
+onnx_model_path: "./models/motor_imagery_cnn.onnx"
+pytorch_model_path: "./models/best_model.pt"
+log_dir: "./logs"
+
+# Inference/serving
+normalization_mean: 0.0
+normalization_std: 1.0
+label_map:
+  0: "T0"
+  1: "T1"
+  2: "T2"
+
+# Miscellaneous
+random_seed: 42
+device: "cpu"
