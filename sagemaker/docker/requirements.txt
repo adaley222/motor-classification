@@ -1,0 +1,19 @@
+# SageMaker-specific requirements
+boto3>=1.26.0
+sagemaker>=2.120.0
+
+# Core ML dependencies
+mne>=1.2.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+torch>=1.12.0
+onnx>=1.12.0
+onnxruntime>=1.12.0
+pyyaml>=6.0
+pytest>=7.0
+
+# Additional dependencies for SageMaker
+pandas>=1.4.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+jupyter>=1.0.0
