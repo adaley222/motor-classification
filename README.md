@@ -7,7 +7,7 @@ Simply, we have a dataset where subjects were instructed to imagine themselves c
 
 We can then use that EEG data to train a network to classify similar events in real-time. While this may seem trivial, the ability for a computer to recognize brain-wave events has wide-ranging uses for scenarios where someone is unable to interface with a phone or computer using their hands. They could simply imagine closing their fist, and trigger an event to interact with the computer.
 
-I have since started fleshing out the notebook into a proper model to be trained and deployed via AWS, and have refactored the previous Keras implementation to PyTorch. 
+I have since started fleshing out the notebook into a proper model to be trained via Sagemaker and deployed via ONNX for use on devices, and have refactored the previous Keras implementation to PyTorch. 
 
 This is a pet project. I think that Brain-Computer Interfaces are fascinating, and while the idea of a chip in your brain is little more than a meme today, I believe some version of a BCI will become ubiquitious within our lifetimes.
 
