@@ -17,3 +17,9 @@ pandas>=1.4.0
 matplotlib>=3.5.0
 seaborn>=0.11.0
 jupyter>=1.0.0
+
+# MLflow for experiment tracking in SageMaker
+mlflow>=2.5.0
+
+# Environment variable management
+python-dotenv>=1.0.0

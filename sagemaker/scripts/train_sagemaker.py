@@ -18,12 +18,58 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 import boto3
 
+# MLflow imports for experiment tracking integration with SageMaker HPO
+import mlflow
+import mlflow.pytorch
+
 # Import model from src
 from src.models.cnn import MotorImageryCNN
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def setup_mlflow_tracking():
+    """
+    Configure MLflow tracking for SageMaker environment.
+    Uses environment variables to connect to MLflow tracking server.
+    """
+    # Get MLflow tracking URI from environment variable
+    # This should be set to your SageMaker MLflow tracking server URL
+    tracking_uri = os.environ.get('MLFLOW_TRACKING_URI')
+    
+    if tracking_uri:
+        mlflow.set_tracking_uri(tracking_uri)
+        logger.info(f"MLflow tracking URI set to: {tracking_uri}")
+    else:
+        # Fallback to local tracking for testing
+        logger.warning("MLFLOW_TRACKING_URI not set, using local tracking")
+    
+    # Set experiment name based on SageMaker job name if available
+    job_name = os.environ.get('SM_TRAINING_JOB_NAME', 'motor-imagery-hpo')
+    experiment_name = f"SageMaker-HPO-{job_name.split('-')[0] if '-' in job_name else job_name}"
+    mlflow.set_experiment(experiment_name)
+    
+    return experiment_name
+
+def log_sagemaker_metrics(metrics_dict, step=None):
+    """
+    Log metrics to both SageMaker (for HPO optimization) and MLflow (for tracking).
+    
+    Args:
+        metrics_dict (dict): Dictionary of metric names and values
+        step (int, optional): Step number for time-series metrics
+    """
+    for metric_name, value in metrics_dict.items():
+        # Log to SageMaker for hyperparameter optimization
+        # SageMaker expects metrics in format: MetricName=value;
+        print(f"{metric_name}={value};")
+        
+        # Also log to MLflow for comprehensive tracking
+        if step is not None:
+            mlflow.log_metric(metric_name, value, step=step)
+        else:
+            mlflow.log_metric(metric_name, value)
 
 def load_data_from_s3_or_local(data_dir):
     """
@@ -140,14 +186,28 @@ def create_data_loaders(X_train, y_train, X_val, y_val, batch_size=32):
     
     return train_loader, val_loader
 
-def train_model(model, train_loader, val_loader, device, epochs=30, lr=1e-5):
-    """Train the model."""
+def train_model(model, train_loader, val_loader, device, epochs=30, lr=1e-5, model_dir=None):
+    """
+    Train the model with dual logging to SageMaker and MLflow.
+    
+    Args:
+        model: PyTorch model to train
+        train_loader: Training data loader
+        val_loader: Validation data loader  
+        device: Training device (cuda/cpu)
+        epochs: Number of training epochs
+        lr: Learning rate
+        model_dir: Directory to save model artifacts
+    """
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
     best_val_acc = 0
     train_losses = []
     val_accuracies = []
+    
+    # Enable MLflow autologging for automatic model tracking
+    mlflow.pytorch.autolog(log_models=True, log_model_signatures=True)
     
     for epoch in range(epochs):
         # Training phase
@@ -172,25 +232,57 @@ def train_model(model, train_loader, val_loader, device, epochs=30, lr=1e-5):
         model.eval()
         correct = 0
         total = 0
+        val_loss = 0.0
         
         with torch.no_grad():
             for data, target in val_loader:
                 data, target = data.to(device), target.to(device)
                 outputs = model(data)
+                val_loss += criterion(outputs, target).item()
                 _, predicted = torch.max(outputs.data, 1)
                 total += target.size(0)
                 correct += (predicted == target).sum().item()
         
         val_acc = correct / total
+        avg_val_loss = val_loss / len(val_loader)
         val_accuracies.append(val_acc)
+        
+        # Dual logging: SageMaker metrics (for HPO) + MLflow metrics (for tracking)
+        epoch_metrics = {
+            'train_loss': avg_train_loss,
+            'validation_accuracy': val_acc,  # Primary metric for SageMaker HPO optimization
+            'validation_loss': avg_val_loss,
+            'epoch': epoch + 1
+        }
+        
+        # Log metrics to both SageMaker and MLflow
+        log_sagemaker_metrics(epoch_metrics, step=epoch)
         
         logger.info(f'Epoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}')
         
-        # Save best model
+        # Save best model and log to MLflow
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            # Save to SageMaker model directory
-            torch.save(model.state_dict(), os.path.join(args.model_dir, 'best_model.pth'))
+            
+            if model_dir:
+                # Save to SageMaker model directory
+                best_model_path = os.path.join(model_dir, 'best_model.pth')
+                torch.save(model.state_dict(), best_model_path)
+                
+                # Log best model to MLflow with additional metadata
+                mlflow.pytorch.log_model(
+                    model, 
+                    "best_model",
+                    registered_model_name="MotorImageryCNN-SageMaker"
+                )
+    
+    # Log final summary metrics for HPO optimization
+    final_metrics = {
+        'final_validation_accuracy': best_val_acc,  # Key metric for HPO
+        'final_train_loss': train_losses[-1],
+        'epochs_completed': epochs
+    }
+    log_sagemaker_metrics(final_metrics)
     
     logger.info(f'Best validation accuracy: {best_val_acc:.4f}')
     
@@ -232,52 +324,98 @@ def save_model_artifacts(model, input_shape, model_dir):
         logger.warning(f"ONNX export failed: {e}")
 
 def main(args):
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logger.info(f"Using device: {device}")
+    # Set up MLflow tracking for SageMaker environment
+    experiment_name = setup_mlflow_tracking()
     
-    # Load data
-    X, y, subject_ids = load_data_from_s3_or_local(args.data_dir)
+    # Start MLflow run with SageMaker job information
+    job_name = os.environ.get('SM_TRAINING_JOB_NAME', 'local-training')
+    run_name = f"hpo-run-{job_name}"
     
-    # Prepare data splits
-    X_train, X_val, X_test, y_train, y_val, y_test, n_classes = prepare_data(
-        X, y, test_size=args.test_size, val_size=args.val_size
-    )
-    
-    # Create data loaders
-    train_loader, val_loader = create_data_loaders(
-        X_train, y_train, X_val, y_val, batch_size=args.batch_size
-    )
-    
-    # Define input shape for model
-    input_shape = (1, X_train.shape[1], X_train.shape[2])  # (channels, height, width)
-    logger.info(f"Input shape: {input_shape}, Number of classes: {n_classes}")
-    
-    # Initialize model
-    model = MotorImageryCNN(input_shape, n_classes).to(device)
-    logger.info(f"Model initialized with {sum(p.numel() for p in model.parameters())} parameters")
-    
-    # Train model
-    train_losses, val_accuracies, best_val_acc = train_model(
-        model, train_loader, val_loader, device, 
-        epochs=args.epochs, lr=args.lr
-    )
-    
-    # Save model artifacts
-    save_model_artifacts(model, input_shape, args.model_dir)
-    
-    # Save training metrics
-    metrics = {
-        'best_validation_accuracy': best_val_acc,
-        'final_train_loss': train_losses[-1],
-        'final_val_accuracy': val_accuracies[-1],
-        'epochs_trained': args.epochs
-    }
-    
-    with open(os.path.join(args.output_data_dir, 'metrics.json'), 'w') as f:
-        json.dump(metrics, f)
-    
-    logger.info("Training completed successfully!")
+    with mlflow.start_run(run_name=run_name):
+        # Log all hyperparameters (including those from SageMaker HPO)
+        hyperparams = {
+            'batch_size': args.batch_size,
+            'learning_rate': args.lr,
+            'epochs': args.epochs,
+            'test_size': args.test_size,
+            'val_size': args.val_size,
+            'sagemaker_job_name': job_name,
+            'model_architecture': 'MotorImageryCNN'
+        }
+        mlflow.log_params(hyperparams)
+        
+        # Set device
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        logger.info(f"Using device: {device}")
+        mlflow.log_param("device", str(device))
+        
+        # Load data
+        X, y, subject_ids = load_data_from_s3_or_local(args.data_dir)
+        
+        # Log dataset information
+        mlflow.log_params({
+            'dataset_samples': len(X),
+            'dataset_shape': str(X.shape),
+            'unique_labels': str(np.unique(y).tolist())
+        })
+        
+        # Prepare data splits
+        X_train, X_val, X_test, y_train, y_val, y_test, n_classes = prepare_data(
+            X, y, test_size=args.test_size, val_size=args.val_size
+        )
+        
+        # Log data split information
+        mlflow.log_params({
+            'train_samples': len(X_train),
+            'val_samples': len(X_val),
+            'test_samples': len(X_test),
+            'n_classes': n_classes
+        })
+        
+        # Create data loaders
+        train_loader, val_loader = create_data_loaders(
+            X_train, y_train, X_val, y_val, batch_size=args.batch_size
+        )
+        
+        # Define input shape for model
+        input_shape = (1, X_train.shape[1], X_train.shape[2])  # (channels, height, width)
+        logger.info(f"Input shape: {input_shape}, Number of classes: {n_classes}")
+        mlflow.log_param("input_shape", str(input_shape))
+        
+        # Initialize model
+        model = MotorImageryCNN(input_shape, n_classes).to(device)
+        total_params = sum(p.numel() for p in model.parameters())
+        logger.info(f"Model initialized with {total_params} parameters")
+        mlflow.log_param("total_parameters", total_params)
+        
+        # Train model with dual logging
+        train_losses, val_accuracies, best_val_acc = train_model(
+            model, train_loader, val_loader, device, 
+            epochs=args.epochs, lr=args.lr, model_dir=args.model_dir
+        )
+        
+        # Save model artifacts
+        save_model_artifacts(model, input_shape, args.model_dir)
+        
+        # Save training metrics for SageMaker
+        metrics = {
+            'best_validation_accuracy': best_val_acc,
+            'final_train_loss': train_losses[-1],
+            'final_val_accuracy': val_accuracies[-1],
+            'epochs_trained': args.epochs
+        }
+        
+        with open(os.path.join(args.output_data_dir, 'metrics.json'), 'w') as f:
+            json.dump(metrics, f)
+        
+        # Final MLflow logging for the completed training run
+        mlflow.log_metrics({
+            'best_validation_accuracy': best_val_acc,
+            'total_epochs_trained': args.epochs,
+            'model_parameters': total_params
+        })
+        
+        logger.info("Training completed successfully!")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

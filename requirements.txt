@@ -7,3 +7,10 @@ onnx
 onnxruntime
 pyyaml
 pytest
+
+# MLflow for experiment tracking and model management
+mlflow>=2.5.0
+boto3>=1.26.0
+
+# Environment variable management
+python-dotenv>=1.0.0
