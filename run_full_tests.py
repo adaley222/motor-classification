@@ -187,7 +187,7 @@ def main():
     
     # Test 4: Unit Tests (preprocessing)
     tests.append(("Unit Tests - Preprocessing", 
-                 run_command(["python", "-m", "pytest", "tests/unit/test_preprocessing.py", "-v"], 
+                 run_command([".venv\\Scripts\\python.exe", "-m", "pytest", "tests/unit/test_preprocessing.py", "-v"], 
                            "Unit tests for preprocessing")))
     
     # Test 5: Import Tests

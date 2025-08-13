@@ -9,9 +9,13 @@ import os
 import boto3
 from unittest.mock import patch, MagicMock
 from botocore.exceptions import ClientError, NoCredentialsError
+from dotenv import load_dotenv
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class TestEnvironmentValidation:

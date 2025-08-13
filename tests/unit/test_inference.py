@@ -18,10 +18,10 @@ from src.models.train import export_to_onnx
 def test_run_onnx_inference():
     """Test ONNX inference with a temporary model."""
     try:
-        # Create a temporary ONNX model for testing
-        input_shape = (1, 160, 64)
-        n_classes = 3
-        model = MotorImageryCNN(input_shape, n_classes)
+        # Create a temporary ONNX model for testing (electrode pairs format)
+        input_shape = (1, 40, 2)
+        n_classes = 4
+        model = MotorImageryCNN(n_classes=n_classes)
         model.eval()
         
         # Export to temporary ONNX file
@@ -29,10 +29,10 @@ def test_run_onnx_inference():
             temp_model_path = temp_model.name
         
         try:
-            export_to_onnx(model, (1, 1, 160, 64), export_path=temp_model_path)
+            export_to_onnx(model, (1, 1, 40, 2), export_path=temp_model_path)
             
             # Test single sample inference
-            dummy_input = np.random.randn(1, 1, 160, 64).astype(np.float32)
+            dummy_input = np.random.randn(1, 1, 40, 2).astype(np.float32)
             output = run_onnx_inference(temp_model_path, dummy_input)
             
             assert output.shape[0] == 1, f"Batch size should be 1, got {output.shape[0]}"
@@ -56,18 +56,18 @@ def test_inference_input_validation():
     """Test that inference handles input shape mismatches gracefully."""
     try:
         # Create temporary model
-        input_shape = (1, 160, 64)
-        model = MotorImageryCNN(input_shape, 3)
+        input_shape = (1, 40, 2)
+        model = MotorImageryCNN(n_classes=4)
         model.eval()
         
         with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as temp_model:
             temp_model_path = temp_model.name
         
         try:
-            export_to_onnx(model, (1, 1, 160, 64), export_path=temp_model_path)
+            export_to_onnx(model, (1, 1, 40, 2), export_path=temp_model_path)
             
             # Test with wrong input shape - should fail gracefully
-            wrong_input = np.random.randn(1, 1, 80, 32).astype(np.float32)  # Wrong dimensions
+            wrong_input = np.random.randn(1, 1, 20, 4).astype(np.float32)  # Wrong dimensions
             
             try:
                 output = run_onnx_inference(temp_model_path, wrong_input)
