@@ -9,35 +9,37 @@ import tempfile
 import os
 from typing import Tuple
 
-def create_mock_eeg_data(n_samples: int = 100, n_channels: int = 64, 
-                        n_timepoints: int = 160, n_classes: int = 3) -> Tuple[np.ndarray, np.ndarray]:
+def create_mock_eeg_data(n_samples: int = 100, n_timepoints: int = 40, 
+                        n_classes: int = 4) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Create mock EEG data for testing.
+    Create mock EEG electrode pairs data for testing.
     
     Args:
         n_samples: Number of samples/epochs
-        n_channels: Number of EEG channels
-        n_timepoints: Number of time points per epoch (160 for 0.25s at 640Hz)
-        n_classes: Number of classes (T0, T1, T2)
+        n_timepoints: Number of time points per epoch (40 for 0.25s at 160Hz)
+        n_classes: Number of classes (T1, T2, T3, T4)
         
     Returns:
-        Tuple of (X, y) where X is EEG data and y are labels
+        Tuple of (X, y) where X is electrode pairs data (n_samples, 40, 2) and y are labels
     """
-    # Generate realistic-looking EEG data with some structure
-    X = np.random.randn(n_samples, n_timepoints, n_channels).astype(np.float32)
+    # Generate realistic-looking EEG electrode pairs data
+    X = np.random.randn(n_samples, n_timepoints, 2).astype(np.float32)
     
     # Add some signal-like patterns for 0.25 second epochs
     for i in range(n_samples):
         # Add some oscillatory components
         t = np.linspace(0, 0.25, n_timepoints)  # 0.25 second epochs
         for freq in [8, 12, 20]:  # Alpha, beta frequencies
-            X[i] += 0.1 * np.sin(2 * np.pi * freq * t)[:, np.newaxis]
+            # Add correlated signals to both electrodes in the pair
+            signal = 0.1 * np.sin(2 * np.pi * freq * t)
+            X[i, :, 0] += signal
+            X[i, :, 1] += signal * 0.8  # Slightly different amplitude for realism
     
     # Scale to typical EEG amplitude range (microvolts)
     X *= 50
     
-    # Generate balanced labels
-    y = np.random.randint(0, n_classes, size=n_samples)
+    # Generate balanced labels (T1=2, T2=3, T3=4, T4=5)
+    y = np.random.choice([2, 3, 4, 5], size=n_samples)
     
     return X, y
 
@@ -72,16 +74,16 @@ def create_mock_physionet_files(temp_dir: str, n_subjects: int = 2,
 
 def create_mock_processed_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Create mock processed data matching expected SageMaker format.
+    Create mock processed electrode pairs data matching expected SageMaker format.
     
     Returns:
         Tuple of (X_processed, y_processed, subject_ids)
     """
-    n_samples = 240  # ~2400 total epochs / 10 for testing
+    n_samples = 240  # Test dataset size
     X_processed, y_processed = create_mock_eeg_data(n_samples)
     
     # Create subject IDs (5 subjects, balanced)
-    subject_ids = np.repeat(np.arange(1, 6), n_samples // 5)
+    subject_ids = np.repeat([f"S{i:03d}" for i in range(1, 6)], n_samples // 5)
     
     return X_processed, y_processed, subject_ids
 

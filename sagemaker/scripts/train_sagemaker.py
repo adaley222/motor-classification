@@ -377,13 +377,21 @@ def main(args):
             X_train, y_train, X_val, y_val, batch_size=args.batch_size
         )
         
-        # Define input shape for model
-        input_shape = (1, X_train.shape[1], X_train.shape[2])  # (channels, height, width)
-        logger.info(f"Input shape: {input_shape}, Number of classes: {n_classes}")
-        mlflow.log_param("input_shape", str(input_shape))
+        # Expected input shape for electrode pairs model: (batch, 1, 40, 2) for 0.25-second epochs
+        expected_shape = (1, 40, 2)  # (channels, time_points, electrodes)
+        actual_shape = (1, X_train.shape[1], X_train.shape[2])
+        logger.info(f"Expected input shape: {expected_shape}, Actual data shape: {actual_shape}")
+        logger.info(f"Number of classes: {n_classes}")
+        mlflow.log_param("input_shape", str(actual_shape))
         
-        # Initialize model
-        model = MotorImageryCNN(input_shape, n_classes).to(device)
+        # Validate data format matches electrode pairs approach
+        if X_train.shape[1] != 40:
+            logger.warning(f"Expected 40 time points, got {X_train.shape[1]}. Data may not be 0.25-second epochs at 160Hz.")
+        if X_train.shape[2] != 2:
+            logger.warning(f"Expected 2 electrodes per sample, got {X_train.shape[2]}. Data may not be electrode pairs.")
+        
+        # Initialize model (electrode pairs model doesn't need input_shape parameter)
+        model = MotorImageryCNN(n_classes=n_classes).to(device)
         total_params = sum(p.numel() for p in model.parameters())
         logger.info(f"Model initialized with {total_params} parameters")
         mlflow.log_param("total_parameters", total_params)
@@ -395,7 +403,7 @@ def main(args):
         )
         
         # Save model artifacts
-        save_model_artifacts(model, input_shape, args.model_dir)
+        save_model_artifacts(model, expected_shape, args.model_dir)
         
         # Save training metrics for SageMaker
         metrics = {

@@ -19,9 +19,9 @@ from src.models.train import export_to_onnx
 def test_onnx_export_and_inference():
     """Test ONNX export and inference with temporary file cleanup."""
     try:
-        input_shape = (1, 1, 160, 64)
-        n_classes = 3
-        model = MotorImageryCNN((1, 160, 64), n_classes)
+        input_shape = (1, 1, 40, 2)  # Electrode pairs format: batch, channels, time, electrodes
+        n_classes = 4
+        model = MotorImageryCNN(n_classes=n_classes)
         model.eval()
         dummy_input = torch.randn(*input_shape)
         
@@ -57,10 +57,10 @@ def test_onnx_export_and_inference():
 def test_model_architecture_consistency():
     """Test that model architecture is consistent with expected input/output shapes."""
     try:
-        input_shape = (1, 160, 64)  # Channel, time, electrodes
-        n_classes = 3
+        input_shape = (1, 40, 2)  # Channel, time, electrodes
+        n_classes = 4
         
-        model = MotorImageryCNN(input_shape, n_classes)
+        model = MotorImageryCNN(n_classes=n_classes)
         model.eval()
         
         # Test forward pass with batch

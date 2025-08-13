@@ -1,5 +1,7 @@
 # config.yaml
-# Configuration for EEG Motor Imagery Pipeline
+# Configuration for EEG Motor Imagery Pipeline - Electrode Pairs Approach
+# Adapted from "A Simplified CNN Classification Method for MI-EEG via the Electrode Pairs Signals" by Lun et al. (2020)
+# Modified to use 0.25-second epochs instead of 4-second epochs
 
 # Data parameters
 data_dir: "./data"
@@ -7,18 +9,36 @@ montage: "standard_1005"
 l_freq: 1.0
 h_freq: 40.0
 tmin: 0
-tmax: 4
+tmax: 0.25  # 0.25-second epochs instead of 4-second
 event_id:
-  T1: 2
-  T2: 3
+  T1: 2  # Left fist motor imagery
+  T2: 3  # Right fist motor imagery
+  T3: 4  # Both fists motor imagery
+  T4: 5  # Both feet motor imagery
 
-# Model parameters
-input_shape: [1, 160, 64]
-n_classes: 3
+# PhysioNet dataset parameters
+subjects: [1, 2, 3, 4, 5]  # Can specify which subjects to use
+runs: [3, 7, 11]  # Motor imagery runs (runs with T1, T2, T3, T4 events)
+
+# Model parameters - Electrode pairs approach (0.25-second epochs)
+input_shape: [1, 40, 2]  # [channels, time_points, electrodes] - 40 time points (160Hz * 0.25s), 2 electrodes per pair
+n_classes: 4  # T1, T2, T3, T4
 dropout_rate: 0.5
 learning_rate: 0.00001
 batch_size: 32
 epochs: 30
+
+# Electrode pairs (9 symmetric pairs over motor cortex)
+electrode_pairs:
+  - ["FC5", "FC6"]
+  - ["FC3", "FC4"]
+  - ["FC1", "FC2"]
+  - ["C5", "C6"]
+  - ["C3", "C4"]
+  - ["C1", "C2"]
+  - ["CP5", "CP6"]
+  - ["CP3", "CP4"]
+  - ["CP1", "CP2"]
 
 # Paths
 onnx_model_path: "./models/motor_imagery_cnn.onnx"
@@ -29,9 +49,10 @@ log_dir: "./logs"
 normalization_mean: 0.0
 normalization_std: 1.0
 label_map:
-  0: "T0"
-  1: "T1"
-  2: "T2"
+  2: "T1"  # Left fist
+  3: "T2"  # Right fist
+  4: "T3"  # Both fists
+  5: "T4"  # Both feet
 
 # Miscellaneous
 random_seed: 42
