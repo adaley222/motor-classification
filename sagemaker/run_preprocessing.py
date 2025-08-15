@@ -7,10 +7,12 @@ This prepares the data for HPO training jobs.
 
 import boto3
 import sagemaker
-from sagemaker.sklearn.processing import SKLearnProcessor
+from sagemaker.pytorch.processing import PyTorchProcessor
 from sagemaker.processing import ProcessingInput, ProcessingOutput
 from dotenv import load_dotenv
 import os
+import yaml
+import argparse
 
 # Load environment variables
 load_dotenv()
@@ -20,10 +22,22 @@ REGION = 'ap-northeast-1'
 sagemaker_session = sagemaker.Session()
 role = os.environ.get('SAGEMAKER_ROLE')
 
+def load_config():
+    """Load configuration from config.yaml"""
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
 def run_data_preprocessing():
     """
     Run SageMaker processing job to preprocess EEG data and upload to S3.
+    Uses subjects and runs from config.yaml
     """
+    
+    # Load configuration
+    config = load_config()
+    subjects = config.get('subjects', [1, 2])
+    runs = config.get('runs', [3])
     
     account_id = sagemaker_session.account_id()
     
@@ -32,19 +46,26 @@ def run_data_preprocessing():
     input_path = f's3://{s3_bucket}/motor-imagery-data/raw'
     output_path = f's3://{s3_bucket}/motor-imagery-data/processed'
     
-    print(f"🔄 Running data preprocessing...")
-    print(f"📤 Output will be saved to: {output_path}")
+    print(f"Running data preprocessing...")
+    print(f"Subjects: {subjects}")
+    print(f"Runs: {runs}")
+    print(f"Output will be saved to: {output_path}")
     
-    # Create processing job using SKLearn processor
-    # This gives us a Python environment with scientific libraries
-    processor = SKLearnProcessor(
-        framework_version='1.0-1',
+    # Create processing job using PyTorch processor
+    # This gives us a better Python environment with more scientific libraries
+    processor = PyTorchProcessor(
+        framework_version='1.12',
+        py_version='py38',
         role=role,
         instance_type='ml.m5.xlarge',  # CPU instance sufficient for preprocessing
         instance_count=1,
         base_job_name='motor-imagery-preprocessing',
         sagemaker_session=sagemaker_session
     )
+    
+    # Convert subjects and runs to strings for arguments
+    subject_args = [str(s) for s in subjects]
+    run_args = [str(r) for r in runs]
     
     # Run processing job
     processor.run(
@@ -63,10 +84,10 @@ def run_data_preprocessing():
             )
         ],
         
-        # Processing job arguments
+        # Processing job arguments - read from config
         arguments=[
-            '--subjects', '1', '2', '3', '4', '5',  # Process 5 subjects
-            '--runs', '3', '7', '11',               # Motor imagery runs
+            '--subjects'] + subject_args + [
+            '--runs'] + run_args + [
             '--s3-bucket', s3_bucket,
             '--s3-prefix', 'motor-imagery-data/processed'
         ],
@@ -76,8 +97,8 @@ def run_data_preprocessing():
         logs=True
     )
     
-    print("✅ Data preprocessing completed!")
-    print(f"📁 Processed data available at: {output_path}")
+    print("Data preprocessing completed!")
+    print(f"Processed data available at: {output_path}")
     
     return output_path
 
@@ -91,7 +112,7 @@ def verify_processed_data(s3_path):
     bucket_name = s3_path.replace('s3://', '').split('/')[0]
     prefix = '/'.join(s3_path.replace('s3://', '').split('/')[1:])
     
-    print(f"🔍 Verifying processed data in s3://{bucket_name}/{prefix}/")
+    print(f"Verifying processed data in s3://{bucket_name}/{prefix}/")
     
     try:
         # List objects in the processed data directory
@@ -104,12 +125,12 @@ def verify_processed_data(s3_path):
             files = [obj['Key'] for obj in response['Contents']]
             data_files = [f for f in files if f.endswith('.npy')]
             
-            print(f"✅ Found {len(data_files)} data files:")
+            print(f"Found {len(data_files)} data files:")
             for file in data_files:
                 # Get file size
                 obj_info = s3_client.head_object(Bucket=bucket_name, Key=file)
                 size_mb = obj_info['ContentLength'] / (1024 * 1024)
-                print(f"   📄 {file.split('/')[-1]} ({size_mb:.1f} MB)")
+                print(f"   {file.split('/')[-1]} ({size_mb:.1f} MB)")
             
             # Check for required files
             required_files = ['X_processed.npy', 'y_processed.npy', 'subject_ids.npy']
@@ -117,26 +138,26 @@ def verify_processed_data(s3_path):
             
             missing_files = [f for f in required_files if f not in found_files]
             if missing_files:
-                print(f"⚠️  Missing required files: {missing_files}")
+                print(f"Missing required files: {missing_files}")
                 return False
             else:
-                print("✅ All required data files present!")
+                print("All required data files present!")
                 return True
         else:
-            print("❌ No processed data found in S3")
+            print("No processed data found in S3")
             return False
             
     except Exception as e:
-        print(f"❌ Error verifying data: {e}")
+        print(f"Error verifying data: {e}")
         return False
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🔄 SAGEMAKER DATA PREPROCESSING")
+    print("SAGEMAKER DATA PREPROCESSING")
     print("=" * 60)
     
     if not role:
-        print("❌ SAGEMAKER_ROLE environment variable not set")
+        print("SAGEMAKER_ROLE environment variable not set")
         print("Please add your SageMaker execution role ARN to your .env file")
         exit(1)
     
@@ -147,15 +168,15 @@ if __name__ == "__main__":
         # Verify results
         if verify_processed_data(output_path):
             print("\n" + "=" * 60)
-            print("🎉 PREPROCESSING COMPLETED SUCCESSFULLY!")
+            print("PREPROCESSING COMPLETED SUCCESSFULLY!")
             print("=" * 60)
             print(f"Data location: {output_path}")
             print("\nNext steps:")
             print("1. Build and push Docker container")
             print("2. Launch HPO job")
         else:
-            print("❌ Data verification failed")
+            print("Data verification failed")
             
     except Exception as e:
-        print(f"❌ Preprocessing failed: {e}")
+        print(f"Preprocessing failed: {e}")
         print("Check SageMaker console for detailed logs")

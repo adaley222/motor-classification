@@ -12,5 +12,8 @@ pytest
 mlflow>=2.5.0
 boto3>=1.26.0
 
+# AWS SageMaker for training and preprocessing
+sagemaker>=2.100.0
+
 # Environment variable management
 python-dotenv>=1.0.0

@@ -30,16 +30,16 @@ def create_ecr_repository(repository_name, region):
     try:
         # Check if repository exists
         ecr_client.describe_repositories(repositoryNames=[repository_name])
-        print(f"✅ ECR repository '{repository_name}' already exists")
+        print(f"ECR repository '{repository_name}' already exists")
         
     except ecr_client.exceptions.RepositoryNotFoundException:
         # Create repository
-        print(f"📦 Creating ECR repository '{repository_name}'...")
+        print(f"Creating ECR repository '{repository_name}'...")
         ecr_client.create_repository(
             repositoryName=repository_name,
             imageScanningConfiguration={'scanOnPush': True}
         )
-        print(f"✅ ECR repository '{repository_name}' created successfully")
+        print(f"ECR repository '{repository_name}' created successfully")
 
 def get_docker_login_command(region, account_id):
     """Get Docker login command for ECR"""
@@ -60,7 +60,7 @@ def build_and_push_image():
     """Build and push Docker image to ECR"""
     
     account_id = get_account_id()
-    print(f"🏗️  Building and pushing Docker image for account: {account_id}")
+    print(f"Building and pushing Docker image for account: {account_id}")
     
     # Create ECR repository
     create_ecr_repository(REPOSITORY_NAME, REGION)
@@ -68,61 +68,61 @@ def build_and_push_image():
     # Docker image URI
     image_uri = f"{account_id}.dkr.ecr.{REGION}.amazonaws.com/{REPOSITORY_NAME}:{IMAGE_TAG}"
     
-    print(f"📍 Target image URI: {image_uri}")
+    print(f"Target image URI: {image_uri}")
     
     # Change to sagemaker directory for Docker build context
     os.chdir('sagemaker')
     
     try:
         # Step 1: Build Docker image
-        print("🔨 Building Docker image...")
+        print("Building Docker image...")
         build_cmd = f"docker build -t {REPOSITORY_NAME}:{IMAGE_TAG} -f docker/Dockerfile ."
         result = subprocess.run(build_cmd.split(), capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"❌ Docker build failed:")
+            print(f"Docker build failed:")
             print(f"STDOUT: {result.stdout}")
             print(f"STDERR: {result.stderr}")
             return False
             
-        print("✅ Docker image built successfully")
+        print("Docker image built successfully")
         
         # Step 2: Tag image for ECR
-        print("🏷️  Tagging image for ECR...")
+        print("Tagging image for ECR...")
         tag_cmd = f"docker tag {REPOSITORY_NAME}:{IMAGE_TAG} {image_uri}"
         result = subprocess.run(tag_cmd.split(), capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"❌ Docker tag failed: {result.stderr}")
+            print(f"Docker tag failed: {result.stderr}")
             return False
             
         # Step 3: Login to ECR
-        print("🔐 Logging into ECR...")
+        print("Logging into ECR...")
         login_cmd = get_docker_login_command(REGION, account_id)
         result = subprocess.run(login_cmd, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"❌ ECR login failed: {result.stderr}")
+            print(f"ECR login failed: {result.stderr}")
             return False
             
-        print("✅ ECR login successful")
+        print("ECR login successful")
         
         # Step 4: Push image
-        print("🚀 Pushing image to ECR...")
+        print("Pushing image to ECR...")
         push_cmd = f"docker push {image_uri}"
         result = subprocess.run(push_cmd.split(), capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"❌ Docker push failed: {result.stderr}")
+            print(f"Docker push failed: {result.stderr}")
             return False
             
-        print("✅ Image pushed to ECR successfully!")
-        print(f"📍 Image URI: {image_uri}")
+        print("Image pushed to ECR successfully!")
+        print(f"Image URI: {image_uri}")
         
         return image_uri
         
     except Exception as e:
-        print(f"❌ Build and push failed: {e}")
+        print(f"Build and push failed: {e}")
         return False
     
     finally:
@@ -143,21 +143,21 @@ def verify_image_exists(image_uri):
         if response['imageDetails']:
             image_size_mb = response['imageDetails'][0]['imageSizeInBytes'] / (1024 * 1024)
             push_time = response['imageDetails'][0]['imagePushedAt']
-            print(f"✅ Image verified in ECR:")
+            print(f"Image verified in ECR:")
             print(f"   Size: {image_size_mb:.1f} MB")
             print(f"   Pushed: {push_time}")
             return True
         else:
-            print("❌ Image not found in ECR")
+            print("Image not found in ECR")
             return False
             
     except Exception as e:
-        print(f"❌ Image verification failed: {e}")
+        print(f"Image verification failed: {e}")
         return False
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🐳 SAGEMAKER DOCKER BUILD AND PUSH")
+    print("SAGEMAKER DOCKER BUILD AND PUSH")
     print("=" * 60)
     
     # Build and push
@@ -167,7 +167,7 @@ if __name__ == "__main__":
         # Verify image exists
         if verify_image_exists(image_uri):
             print("\n" + "=" * 60)
-            print("🎉 BUILD AND PUSH COMPLETED SUCCESSFULLY!")
+            print("BUILD AND PUSH COMPLETED SUCCESSFULLY!")
             print("=" * 60)
             print(f"Image URI: {image_uri}")
             print("\nNext steps:")
@@ -175,6 +175,6 @@ if __name__ == "__main__":
             print("2. Run data preprocessing")
             print("3. Launch HPO job")
         else:
-            print("❌ Image verification failed")
+            print("Image verification failed")
     else:
-        print("❌ Build and push failed")
+        print("Build and push failed")

@@ -2,3 +2,5 @@
 .env
 CLAUDE.md
 .venv
+sagemaker/__pycache__/
+.pytest_cache/

@@ -16,9 +16,24 @@ event_id:
   T3: 4  # Both fists motor imagery
   T4: 5  # Both feet motor imagery
 
-# PhysioNet dataset parameters
-subjects: [1, 2, 3, 4, 5]  # Can specify which subjects to use
-runs: [3, 7, 11]  # Motor imagery runs (runs with T1, T2, T3, T4 events)
+# PhysioNet EEG Motor Movement/Imagery Dataset parameters
+# Dataset info: 109 subjects, 14 runs each, 64-channel EEG at 160Hz
+# Run 1: Baseline, eyes open (1 min)
+# Run 2: Baseline, eyes closed (1 min)
+# Run 3,7,11: Open and close left or right fist (real movement)
+# Run 4,8,12: Imagine opening and closing left or right fist (motor imagery)
+# Run 5,9,13: Open and close both fists or both feet (real movement)
+# Run 6,10,14: Imagine opening and closing both fists or both feet (motor imagery)
+
+# Configurable dataset parameters
+subjects: [1, 2]           # Configurable: can use any subset of 1-109
+runs: [4]                  # Configurable: motor imagery runs are [4,6,8,10,12,14]
+
+# Common experimental configurations (examples):
+# Small validation: subjects=[1,2], runs=[4] (~500-800 epochs)
+# Medium scale: subjects=[1,2,3,4,5], runs=[4,8,12] (~2400 epochs)
+# Large scale: subjects=[1-20], runs=[4,6,8,10,12,14] (~many thousands epochs)
+# Full dataset: subjects=[1-109], runs=[4,6,8,10,12,14] (~massive dataset)
 
 # Model parameters - Electrode pairs approach (0.25-second epochs)
 input_shape: [1, 40, 2]  # [channels, time_points, electrodes] - 40 time points (160Hz * 0.25s), 2 electrodes per pair

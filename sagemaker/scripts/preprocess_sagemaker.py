@@ -5,7 +5,42 @@ SageMaker-compatible preprocessing script for EEG motor imagery data.
 Runs as a SageMaker Processing Job with S3 input/output.
 """
 
+import subprocess
+import sys
 import os
+
+def install_package(package):
+    """Install a package with pip"""
+    try:
+        __import__(package.split('==')[0])  # Test import without version
+        print(f"{package} already available")
+    except ImportError:
+        print(f"Installing {package}...")
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", 
+                package, "--no-cache-dir", "--quiet"
+            ])
+            print(f"Successfully installed {package}")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install {package}: {e}")
+            raise
+
+# Install required packages with specific versions for stability
+required_packages = [
+    'mne>=1.2.0',
+    'numpy>=1.21.0', 
+    'boto3>=1.26.0',
+    'matplotlib>=3.5.0',
+    'scipy>=1.7.0'
+]
+
+print("Installing required dependencies...")
+for package in required_packages:
+    install_package(package)
+
+print("All dependencies installed successfully!")
+
 import boto3
 import numpy as np
 import mne
@@ -20,16 +55,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Define the 9 pairs of symmetric electrodes over motor cortex region 
+# Using PhysioNet dataset naming convention
 ELECTRODE_PAIRS = [
-    ('FC5', 'FC6'),
-    ('FC3', 'FC4'), 
-    ('FC1', 'FC2'),
-    ('C5', 'C6'),
-    ('C3', 'C4'),
-    ('C1', 'C2'),
-    ('CP5', 'CP6'),
-    ('CP3', 'CP4'),
-    ('CP1', 'CP2')
+    ('Fc5.', 'Fc6.'),
+    ('Fc3.', 'Fc4.'), 
+    ('Fc1.', 'Fc2.'),
+    ('C5..', 'C6..'),
+    ('C3..', 'C4..'),
+    ('C1..', 'C2..'),
+    ('Cp5.', 'Cp6.'),
+    ('Cp3.', 'Cp4.'),
+    ('Cp1.', 'Cp2.')
 ]
 
 def preprocess_edf_electrode_pairs(edf_path, event_id=None, tmin=0, tmax=0.25, 
@@ -52,15 +88,28 @@ def preprocess_edf_electrode_pairs(edf_path, event_id=None, tmin=0, tmax=0.25,
     if event_id is None:
         event_id = dict(T1=2, T2=3, T3=4, T4=5)  # PhysioNet event codes
     
-    # Extract events from annotations
-    events, _ = mne.events_from_annotations(raw, event_id=event_id, verbose=False)
+    # Extract events from annotations - first see what events are actually available
+    events, event_mapping = mne.events_from_annotations(raw, verbose=False)
     
-    # Create epochs of 0.25 seconds
-    epochs = mne.Epochs(raw, events, event_id, tmin, tmax, 
+    # Filter event_id to only include events that are actually present in the data
+    available_events = {}
+    for event_name, event_code in event_id.items():
+        if event_code in event_mapping.values():
+            available_events[event_name] = event_code
+    
+    if not available_events:
+        raise ValueError(f"No matching events found. Available events: {list(event_mapping.keys())}")
+    
+    logger.info(f"Using events: {available_events}")
+    
+    # Create epochs of 0.25 seconds using only available events
+    epochs = mne.Epochs(raw, events, available_events, tmin, tmax, 
                        proj=True, baseline=None, preload=True, verbose=False)
     
     # Get channel names
     ch_names = epochs.ch_names
+    logger.info(f"Available channels: {ch_names[:10]}...")  # Show first 10 channels
+    logger.info(f"Total epochs: {len(epochs)}")
     
     # Create samples for each electrode pair
     X_pairs = []
@@ -70,6 +119,7 @@ def preprocess_edf_electrode_pairs(edf_path, event_id=None, tmin=0, tmax=0.25,
     for epoch_idx in range(len(epochs)):
         epoch_data = epochs[epoch_idx].get_data()[0]  # Shape: (n_channels, n_times)
         epoch_label = epochs.events[epoch_idx, -1]
+        logger.info(f"Epoch {epoch_idx}: shape={epoch_data.shape}, label={epoch_label}")
         
         # For each electrode pair, create a sample
         for pair_name in ELECTRODE_PAIRS:
@@ -87,11 +137,29 @@ def preprocess_edf_electrode_pairs(edf_path, event_id=None, tmin=0, tmax=0.25,
                 # Combine into pair format: (n_times, 2)
                 pair_data = np.column_stack([signal1, signal2])
                 
-                # Ensure we have exactly 40 time points (160 Hz * 0.25 seconds)
-                if pair_data.shape[0] == 40:
+                logger.info(f"Pair {electrode1}-{electrode2}: data shape={pair_data.shape}")
+                
+                # Check time points - be more flexible than exactly 40
+                if pair_data.shape[0] >= 35 and pair_data.shape[0] <= 45:
+                    # Resize to exactly 40 if needed
+                    if pair_data.shape[0] != 40:
+                        from scipy import signal as scipy_signal
+                        pair_data = scipy_signal.resample(pair_data, 40)
+                        logger.info(f"Resampled to 40 time points")
+                    
                     X_pairs.append(pair_data)
                     y_labels.append(epoch_label)
                     pair_names.append(f"{electrode1}-{electrode2}")
+                    logger.info(f"Added valid pair sample")
+                else:
+                    logger.warning(f"Invalid time points: {pair_data.shape[0]} (expected ~40)")
+            else:
+                missing = []
+                if electrode1 not in ch_names:
+                    missing.append(electrode1)
+                if electrode2 not in ch_names:
+                    missing.append(electrode2)
+                logger.warning(f"Missing electrodes for pair {pair_name}: {missing}")
     
     if X_pairs:
         X_pairs = np.array(X_pairs)  # Shape: (n_samples, 40, 2)
@@ -129,7 +197,7 @@ def download_and_process_physionet(subjects, runs, processing_dir, s3_bucket=Non
         logger.info(f"Processing subject {subject}")
         try:
             # Download data for this subject
-            raw_fnames = eegbci.load_data(subject, runs, path=input_dir)
+            raw_fnames = eegbci.load_data(subject, runs, path=input_dir, update_path=True)
             
             for fname in raw_fnames:
                 logger.info(f"Processing file: {fname}")
